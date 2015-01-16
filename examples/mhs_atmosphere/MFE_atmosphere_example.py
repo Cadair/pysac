@@ -27,8 +27,10 @@ Plotting options are included in plot/mhs_plot.py
 
 import os
 import numpy as np
-import pysac.mhs_atmosphere as atm
+
 import astropy.units as u
+
+import pysac.mhs_atmosphere as atm
 from pysac.mhs_atmosphere.parameters import scales, physical_constants
 from pysac.mhs_atmosphere.parameters import models
 #==============================================================================
@@ -47,65 +49,48 @@ except ImportError:
     l_mpi = False
     rank = 0
     size = 1
+    
 #==============================================================================
-#set up model parameters
+# Define the Model
 #==============================================================================
-
 model = models.MFEModel()
 
-if not isinstance(model, models.Spruit):
-    #interpolate the hs 1D profiles from empirical data source[s]
-    empirical_data = atm.read_VAL3c_MTW(mu=physical_constants['mu'])
+#interpolate the hs 1D profiles from empirical data source[s]
+empirical_data = atm.read_VAL3c_MTW(mu=physical_constants['mu'])
 
-    table = atm.interpolate_atmosphere(model, empirical_data)
+background_table = atm.interpolate_atmosphere(model, empirical_data)
 
 #==============================================================================
 #calculate 1d hydrostatic balance from empirical density profile
 #==============================================================================
-if isinstance(model, models.Spruit):
-    model_pars['l_square'] = True
-    pressure_Z, rho_Z, Rgas_Z = atm.get_spruit_hs(model_pars,
-                                                  physical_constants)
-else:
-    # the hs pressure balance is enhanced by pressure equivalent to the
-    # residual mean coronal magnetic pressure contribution once the magnetic
-    # field has been applied
-    magp_meanz = np.ones(len(model_pars['Z'])) * u.one
-    magp_meanz *= model_pars['pBplus']**2/(2*physical_constants['mu0'])
+# the hs pressure balance is enhanced by pressure equivalent to the
+# residual mean coronal magnetic pressure contribution once the magnetic
+# field has been applied
+magp_meanz = np.ones(len(model['Z'])) * u.one
+magp_meanz *= model['pBplus']**2/(2*physical_constants['mu0'])
 
-    pressure_Z, rho_Z, Rgas_Z = atm.vertical_profile(model_pars,
-                                                     table,
-                                                     magp_meanz,
-                                                     physical_constants
-                                                     )
+pressure_Z, rho_Z, Rgas_Z = atm.vertical_profile(model,
+                                                 background_table,
+                                                 magp_meanz,
+                                                 physical_constants)
 
 #==============================================================================
 # load flux tube footpoint parameters
 #==============================================================================
 # axial location and value of Bz at each footpoint
-xi, yi, Si = atm.get_flux_tubes(model_pars)
+xi, yi, Si = atm.get_flux_tubes(model)
+
 #==============================================================================
 # split domain into processes if mpi
 #==============================================================================
-ax, ay, az = np.mgrid[coords['xmin']:coords['xmax']:1j*model_pars['Nxyz'][0],
-                      coords['ymin']:coords['ymax']:1j*model_pars['Nxyz'][1],
-                      coords['zmin']:coords['zmax']:1j*model_pars['Nxyz'][2]]
+cunit = model['zmax'].unit
+x, y, z = np.mgrid[model['xmin'].to(cunit):model['xmax'].to(cunit):1j*model['domain_dimensions'][0],
+                   model['ymin'].to(cunit):model['ymax'].to(cunit):1j*model['domain_dimensions'][1],
+                   model['zmin'].to(cunit):model['zmax'].to(cunit):1j*model['domain_dimensions'][2]]
 
-# split the grid between processes for mpi
-if l_mpi:
-    x_chunks = np.array_split(ax, size, axis=0)
-    y_chunks = np.array_split(ay, size, axis=0)
-    z_chunks = np.array_split(az, size, axis=0)
-
-    x = comm.scatter(x_chunks, root=0)
-    y = comm.scatter(y_chunks, root=0)
-    z = comm.scatter(z_chunks, root=0)
-else:
-    x, y, z = ax, ay, az
-
-x = u.Quantity(x, unit=coords['xmin'].unit)
-y = u.Quantity(y, unit=coords['ymin'].unit)
-z = u.Quantity(z, unit=coords['zmin'].unit)
+x = u.Quantity(x, unit=cunit)
+y = u.Quantity(y, unit=cunit)
+z = u.Quantity(z, unit=cunit)
 #==============================================================================
 # initialize zero arrays in which to add magnetic field and mhs adjustments
 #==============================================================================
@@ -123,8 +108,8 @@ Btensy  = u.Quantity(np.zeros(x.shape), unit=u.N/u.m**3)
 #==============================================================================
 #calculate the magnetic field and pressure/density balancing expressions
 #==============================================================================
-for i in range(0,model_pars['nftubes']):
-    for j in range(i,model_pars['nftubes']):
+for i in range(0,model['nftubes']):
+    for j in range(i,model['nftubes']):
         if rank == 0:
             print'calculating ij-pair:',i,j
         if i == j:
@@ -132,7 +117,7 @@ for i in range(0,model_pars['nftubes']):
                 atm.construct_magnetic_field(
                                              x, y, z,
                                              xi[i], yi[i], Si[i],
-                                             model_pars, option_pars,
+                                             model,
                                              physical_constants,
                                              scales
                                             )
@@ -147,8 +132,7 @@ for i in range(0,model_pars['nftubes']):
                                              x, y, z,
                                              xi[i], yi[i],
                                              xi[j], yi[j], Si[i], Si[j],
-                                             model_pars,
-                                             option_pars,
+                                             model,
                                              physical_constants,
                                              scales
                                             )
@@ -166,8 +150,8 @@ del pressure_mi, rho_mi, Bxi, Byi ,Bzi, B2x, B2y
 #==============================================================================
 # select the 1D array spanning the local mpi process; the add/sub of dz to
 # ensure all indices are used, but only once
-indz = np.where(coords['Z'] >= z.min()-0.1*coords['dz']) and \
-       np.where(coords['Z'] <= z.max()+0.1*coords['dz'])
+indz = np.where(model['Z'] >= (z.min()-0.1*model['dz']).to(model['Z'].unit)) and \
+       np.where(model['Z'] <= (z.max()+0.1*model['dz']).to(model['Z'].unit))
 pressure_z, rho_z, Rgas_z = pressure_Z[indz], rho_Z[indz], Rgas_Z[indz]
 # local proc 3D mhs arrays
 pressure, rho = atm.mhs_3D_profile(z,
@@ -187,41 +171,36 @@ energy = atm.get_internal_energy(pressure,
 #============================================================================
 # set up data directory and file names
 # may be worthwhile locating on /data if files are large
-datadir = os.path.expanduser('~/mhs_atmosphere/'+model_pars['model']+'/')
-filename = datadir + model_pars['model'] + option_pars['suffix']
+datadir = os.path.expanduser('~/mhs_atmosphere/'+model.__class__.__name__+'/')
+filename = datadir + model.__class__.__name__ + model['suffix']
 if not os.path.exists(datadir):
     os.makedirs(datadir)
-sourcefile = datadir + model_pars['model'] + '_sources' + option_pars['suffix']
-auxfile = datadir + model_pars['model'] + '_aux' + option_pars['suffix']
+sourcefile = datadir + model.__class__.__name__ + '_sources' + model['suffix']
+auxfile = datadir + model.__class__.__name__ + '_aux' + model['suffix']
 
 # save the variables for the initialisation of a SAC simulation
 atm.save_SACvariables(
+              model,
               filename,
               rho,
               Bx,
               By,
               Bz,
               energy,
-              option_pars,
               physical_constants,
-              coords,
-              model_pars['Nxyz']
              )
 # save the balancing forces as the background source terms for SAC simulation
 atm.save_SACsources(
               sourcefile,
               Fx,
               Fy,
-              option_pars,
-              physical_constants,
-              coords,
-              model_pars['Nxyz']
+              physical_constants
              )
 # save auxilliary variable and 1D profiles for plotting and analysis
 Rgas = np.zeros(x.shape)
 Rgas[:] = Rgas_z
 temperature = pressure/rho/Rgas
-if not option_pars['l_hdonly']:
+if not model['l_hdonly']:
     inan = np.where(magp <=1e-7*pressure.min())
     magpbeta = magp
     magpbeta[inan] = 1e-7*pressure.min()  # low pressure floor to avoid NaN
@@ -231,6 +210,7 @@ else:
 alfven = np.sqrt(2.*physical_constants['mu0']*magp/rho)
 cspeed = np.sqrt(physical_constants['gamma']*pressure/rho)
 atm.save_auxilliary1D(
+              model,
               auxfile,
               pressure_m,
               rho_m,
@@ -243,9 +223,6 @@ atm.save_auxilliary1D(
               pressure_Z,
               rho_Z,
               Rgas_Z,
-              option_pars,
-              physical_constants,
-              coords,
-              model_pars['Nxyz']
+              physical_constants
              )
 

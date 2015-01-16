@@ -14,24 +14,22 @@ import astropy.units as u
 #============================================================================
 # locate flux tubes and footpoint strength
 #============================================================================
-def get_flux_tubes(
-                   model_pars,
-                   coords,
-                   option_pars
-                  ):
+def get_flux_tubes(model_pars):
     """ Obtain an array of x,y coordinates and corresponding vertical
     component value for the photospheric magnetic field  """
 
     xi, yi, Si = [0.]*u.Mm,  [0.]*u.Mm,  [0.1]*u.T  # x,y,Bz(r=0,z=0)
 
     # parameters for matching Mumford,Fedun,Erdelyi 2014
-    if option_pars['l_mfe']:
-        Si = [0.15]*u.T # 150mT SI units
+    if model_pars['l_mfe']:
+        Si = [150]*u.mT # 150mT SI units
+
     # parameters for matching Gent,Fedun,Mumford,Erdelyi 2014
-    elif option_pars['l_single']:
-        Si = [0.1]*u.T # 100mT SI units
+    elif model_pars['l_single']:
+        Si = [100]*u.mT # 100mT SI units
+
     # parameters for matching Gent,Fedun,Erdelyi 2014 flux tube pair
-    elif option_pars['l_tube_pair']:
+    elif model_pars['l_tube_pair']:
         xi, yi, Si = (
                       u.Quantity([
                                 [ 0.00],
@@ -53,7 +51,7 @@ def get_flux_tubes(
                                ], unit=u.T)
                      )# 50mT SI
     # parameters for matching Gent,Fedun,Erdelyi 2014 twisted flux tubes
-    elif option_pars['l_multi_twist']:
+    elif model_pars['l_multi_twist']:
         xi, yi, Si = (
                       u.Quantity([
                                 [ 0.34],
@@ -74,7 +72,7 @@ def get_flux_tubes(
                                 [  50e-3]
                                ], unit=u.T)
                      )# 50mT SI
-    elif option_pars['l_multi_netwk']:
+    elif model_pars['l_multi_netwk']:
         xi, yi, Si = (
             u.Quantity(np.random.uniform(-0.5, 0.5, model_pars['nftubes']),
             unit=u.Mm),
@@ -95,7 +93,7 @@ def get_flux_tubes(
         yi[6 : 9] = yi[ 6: 9] + y1[2] * u.Mm
         yi[9 :12] = yi[ 9:12] + y1[3] * u.Mm
         yi[12:15] = yi[12:15] + y1[4] * u.Mm
-    elif option_pars['l_multi_lanes']:
+    elif model_pars['l_multi_lanes']:
         xi, yi, Si = (
             u.Quantity(np.random.uniform(-0.3, 0.3, model_pars['nftubes']),
             unit=u.Mm),
@@ -122,7 +120,6 @@ def construct_magnetic_field(
                              x, y, z,
                              x0, y0, S,
                              model_pars,
-                             option_pars,
                              physical_constants,
                              scales):
     """ Construct self similar magnetic field configuration
@@ -141,7 +138,7 @@ def construct_magnetic_field(
     Bf3 = model_pars['coratio']
     Bbz = (model_pars['B_corona'])
     #define exponentials and derivatives, basis functions
-    if option_pars['l_B0_expz']:
+    if model_pars['l_B0_expz']:
         B1z = Bf1 * np.exp(-z**2/z1**2)
         B2z = Bf2 * np.exp(-z/z2)
         B3z = Bf3 * np.exp(-z/z3)
@@ -209,7 +206,6 @@ def construct_pairwise_field(x, y, z,
                              xj, yj,
                              Si, Sj,
                              model_pars,
-                             option_pars,
                              physical_constants,
                              scales
                             ):
@@ -227,7 +223,7 @@ def construct_pairwise_field(x, y, z,
     Bf3 = model_pars['coratio']
     Bbz = (model_pars['B_corona'])
     #define exponentials and derivatives, basis functions
-    if option_pars['l_B0_expz']:
+    if model_pars['l_B0_expz']:
         B1z = Bf1 * np.exp(-z**2/z1**2)
         B2z = Bf2 * np.exp(-z/z2)
         B3z = Bf3 * np.exp(-z/z3)

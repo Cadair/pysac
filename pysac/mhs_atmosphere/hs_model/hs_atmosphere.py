@@ -81,7 +81,7 @@ def read_VAL3c_MTW(VAL_file=None, MTW_file=None, mu=0.602):
 #============================================================================
 # interpolate the empirical data onto a Z array 
 #============================================================================
-def interpolate_atmosphere(data, Z):
+def interpolate_atmosphere(model, data):
     """ This module generates a 1d array for the model plasma preesure, plasma
     density, temperature and mean molecular weight.
     """
@@ -95,11 +95,11 @@ def interpolate_atmosphere(data, Z):
     muofT_f = UnivariateSpline(hdata,np.array(np.log(data['mu'])),k=1, s=0.0)
 
     outdata = Table()
-    outdata['Z'] = Z.to(data['Z'].unit) 
-    outdata['p'] = np.exp(pdata_f(Z.to(data['Z'].unit))) * data['p'].unit
-    outdata['T'] = np.exp(Tdata_f(Z.to(data['Z'].unit))) * data['T'].unit
-    outdata['rho'] = np.exp(rdata_f(Z.to(data['Z'].unit))) * data['rho'].unit
-    outdata['mu'] = np.exp(muofT_f(Z.to(data['Z'].unit))) * u.one
+    outdata['Z'] = model.Zext.to(data['Z'].unit) 
+    outdata['p'] = np.exp(pdata_f(model.Zext.to(data['Z'].unit))) * data['p'].unit
+    outdata['T'] = np.exp(Tdata_f(model.Zext.to(data['Z'].unit))) * data['T'].unit
+    outdata['rho'] = np.exp(rdata_f(model.Zext.to(data['Z'].unit))) * data['rho'].unit
+    outdata['mu'] = np.exp(muofT_f(model.Zext.to(data['Z'].unit))) * u.one
 
     return outdata
 
@@ -107,12 +107,8 @@ def interpolate_atmosphere(data, Z):
 #----------------------------------------------------------------------------
 # a simpler exponential atmosphere to test Spruit's analytical result
 #----------------------------------------------------------------------------
-def get_spruit_hs(
-                   Z,
-                   model_pars,
-                   physical_constants,
-                   option_pars
-                 ):
+def get_spruit_hs(model_pars,
+                  physical_constants):
     """ photospheric values of pressure and density are taken from VAL3c.
         Four options are available to select Alfven speed along the flux tube
         axis to be:
@@ -126,25 +122,26 @@ def get_spruit_hs(
     p0 = 117200.0 * u.dyne/u.cm**2
     r0 = 2.727e-07 * u.g/u.cm**3
     g0 = physical_constants['gravity']
-    if option_pars['l_const']:
+    Z = model_pars['Z']
+    if model_pars['l_const']:
         pressure_Z = p0 *     model_pars['chrom_scale']**3/\
                              (model_pars['chrom_scale'] + Z)**3
         rho_Z = -3./g0 * p0 * model_pars['chrom_scale']**3/\
                              (model_pars['chrom_scale'] + Z)**4
         rtest = -3./g0 * p0 / model_pars['chrom_scale']
-    elif option_pars['l_sqrt']:
+    elif model_pars['l_sqrt']:
         pressure_Z = p0 *     model_pars['chrom_scale']**4/\
                              (model_pars['chrom_scale'] + Z)**4
         rho_Z = -4./g0 * p0 * model_pars['chrom_scale']**4/\
                              (model_pars['chrom_scale'] + Z)**5
         rtest = -4./g0 * p0 / model_pars['chrom_scale']
-    elif option_pars['l_linear']:
+    elif model_pars['l_linear']:
         pressure_Z = p0 *     model_pars['chrom_scale']**5/\
                              (model_pars['chrom_scale'] + Z)**5
         rho_Z = -5./g0 * p0 * model_pars['chrom_scale']**5/\
                              (model_pars['chrom_scale'] + Z)**6
         rtest = -5./g0 * p0 / model_pars['chrom_scale']
-    elif option_pars['l_square']:
+    elif model_pars['l_square']:
         pressure_Z = p0 *     model_pars['chrom_scale']**7/\
                              (model_pars['chrom_scale'] + Z)**7
         rho_Z = -7./g0 * p0 * model_pars['chrom_scale']**7/\
@@ -164,17 +161,17 @@ def get_spruit_hs(
 #============================================================================
 # Construct 3D hydrostatic profiles and include the magneto adjustments
 #============================================================================
-def vertical_profile(Z,
+def vertical_profile(model_pars,
                      table,
                      magp,
-                     physical_constants, dz,
+                     physical_constants
                     ):
     """Return the vertical profiles for thermal pressure and density in 1D.
        Integrate in reverse from the corona to the photosphere to remove
        sensitivity to larger chromospheric gradients."""
 
     g0 = physical_constants['gravity']
-    Rgas_Z = u.Quantity(np.ones(Z.size), u.one)
+    Rgas_Z = u.Quantity(np.ones(model_pars['Z'].size), u.one)
     Rgas_Z *= physical_constants['boltzmann']/\
                 physical_constants['proton_mass']/table['mu'][4:-4]
     rdata   = u.Quantity(table['rho'], copy=True)
@@ -187,18 +184,18 @@ def vertical_profile(Z,
     table_T = u.Quantity(table['T'])
     linp_1 = table_T[-5]*rdata_Z[-1]*Rgas_Z[-1] + magp[-1]
     linp_2 = table_T[-6]*rdata_Z[-2]*Rgas_Z[-2] + magp[-2]
-    linp = u.Quantity(np.ones(len(Z)), unit=linp_1.unit)
+    linp = u.Quantity(np.ones(len(model_pars['Z'])), unit=linp_1.unit)
     linp[-1] = linp_1
     linp[-2] = linp_2
 #    linp[-2] = linp[-1] + magp[-2] - magp[-1] - ( 9.*g0*rdata[-1]*dz+19.*g0*rdata[-2]*dz- 5.*g0*rdata[-3]*dz+g0*rdata[-4]*dz)/24.
 
-    for i in range(2,Z.size):
+    for i in range(2,model_pars['Z'].size):
         linp[-i-1] = (336.*linp[-i]-33.*linp[-i+1]
-                  - 25.*(g0*rdata[-i-7]  )*dz
-                  +114.*(g0*rdata[-i-6]  )*dz
-                  -321.*(g0*rdata[-i-5])*dz
-                  - 38.*(g0*rdata[-i-4])*dz
-                  )/303. + magp[-i-1] - magp[-i]
+                      - 25.*(g0*rdata[-i-7]  )*model_pars['dz']
+                      + 114.*(g0*rdata[-i-6]  )*model_pars['dz']
+                      - 321.*(g0*rdata[-i-5])*model_pars['dz']
+                      - 38.*(g0*rdata[-i-4])*model_pars['dz']
+                      )/303. + magp[-i-1] - magp[-i]
 #        linp[-i-1] = (144.*linp[-i]+18.*linp[-i+1]
 #                  -102.*(g0*rdata[-i]  )*dz
 #                  - 84.*(g0*rdata[-i-1])*dz
