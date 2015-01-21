@@ -54,6 +54,9 @@ class BaseModel(dict):
             return dict.__getitem__(self, value)
         except KeyError:
             return self.__getattribute__(value)
+    
+    def __str__(self):
+        return self.__class__.__name__
 
     @property
     def xmin(self):
@@ -152,8 +155,8 @@ class MFEModel(BaseModel):
                  'B_corona': 0.*u.T,
                  'pBplus': 4.250e-4*u.T,
                  'domain_dimensions':[128,128,128],
-                 'domain_left_edge':[-1*u.Mm,-1*u.Mm,35*u.km],
-                 'domain_right_edge':[1*u.Mm,1*u.Mm,1.6*u.Mm],
+                 'domain_left_edge':u.Quantity([-1*u.Mm,-1*u.Mm,35*u.km]),
+                 'domain_right_edge':u.Quantity([1*u.Mm,1*u.Mm,1.6*u.Mm]),
                  'l_single': True,
                  'l_mfe': True,
                  'l_B0_quadz': True,

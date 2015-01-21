@@ -171,12 +171,12 @@ energy = atm.get_internal_energy(pressure,
 #============================================================================
 # set up data directory and file names
 # may be worthwhile locating on /data if files are large
-datadir = os.path.expanduser('~/mhs_atmosphere/'+model.__class__.__name__+'/')
-filename = datadir + model.__class__.__name__ + model['suffix']
+datadir = os.path.expanduser('~/mhs_atmosphere/'+ str(model) +'/')
+filename = datadir + str(model) + model['suffix']
 if not os.path.exists(datadir):
     os.makedirs(datadir)
-sourcefile = datadir + model.__class__.__name__ + '_sources' + model['suffix']
-auxfile = datadir + model.__class__.__name__ + '_aux' + model['suffix']
+sourcefile = datadir + str(model) + '_sources' + model['suffix']
+auxfile = datadir + str(model) + '_aux' + model['suffix']
 
 # save the variables for the initialisation of a SAC simulation
 atm.save_SACvariables(
@@ -187,15 +187,13 @@ atm.save_SACvariables(
               By,
               Bz,
               energy,
-              physical_constants,
-             )
+              physical_constants)
 # save the balancing forces as the background source terms for SAC simulation
-atm.save_SACsources(
-              sourcefile,
-              Fx,
-              Fy,
-              physical_constants
-             )
+atm.save_SACsources(model,
+                    sourcefile,
+                    Fx,
+                    Fy,
+                    physical_constants)
 # save auxilliary variable and 1D profiles for plotting and analysis
 Rgas = np.zeros(x.shape)
 Rgas[:] = Rgas_z
