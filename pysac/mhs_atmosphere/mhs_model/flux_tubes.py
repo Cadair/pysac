@@ -116,15 +116,15 @@ def get_flux_tubes(model_pars):
 #============================================================================
 # Magnetic Field Construction (See. Fedun et.al 2011)
 #============================================================================
-def construct_magnetic_field(
-                             x, y, z,
-                             x0, y0, S,
-                             model_pars,
+def construct_magnetic_field(model_pars,
+                             tube_i,
                              physical_constants,
                              scales):
     """ Construct self similar magnetic field configuration
     Note if model_pars['B_corona'] = 0 then paper3 results otherwise paper 2
     """
+    x, y, z = model_pars.x, model_pars.y, model_pars.z
+    x0, y0, S = model_pars.flux_tubes[tube_i]
     #Extract commonly used scales:
     z1 = model_pars['photo_scale']
     z2 = model_pars['chrom_scale']
@@ -201,15 +201,16 @@ def construct_magnetic_field(
 #============================================================================
 # Magnetic Field Construction (See. Fedun et.al 2011)
 #============================================================================
-def construct_pairwise_field(x, y, z,
-                             xi, yi,
-                             xj, yj,
-                             Si, Sj,
-                             model_pars,
+def construct_pairwise_field(model_pars,
+                             tube_i,
+                             tube_j,
                              physical_constants,
                              scales
                             ):
     """ Construct self similar magnetic field configuration """
+    x, y, z = model_pars.x, model_pars.y, model_pars.z
+    xi, yi, Si = model_pars.flux_tubes[tube_i]
+    xj, yj, Sj = model_pars.flux_tubes[tube_j]
     #Extract commonly used scales:
     z1 = model_pars['photo_scale']
     z2 = model_pars['chrom_scale']

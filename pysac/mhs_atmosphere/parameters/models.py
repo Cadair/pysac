@@ -6,7 +6,62 @@ Created on Thu Dec 11 17:45:48 2014
 """
 
 import numpy as np
+
+import astropy.utils
 import astropy.units as u
+
+class FluxTubes(object):
+    def __init__(self, xi=None, yi=None, si=None):
+        
+        self._xi = []
+        self._yi = []
+        self._si = []
+        
+        self.add_fluxtube(xi, yi, si)
+
+    @property
+    def xi(self):
+        return u.Quantity(self._xi).reshape((len(self._xi),1))
+    
+    @property
+    def yi(self):
+        return u.Quantity(self._yi).reshape((len(self._xi),1))
+    
+    @property
+    def si(self):
+        return u.Quantity(self._si).reshape((len(self._xi),1))
+    
+    def add_fluxtube(self, xi, yi, si):
+        if any((xi, yi, si)) and not all ((xi, yi, si)) and len(xi) == len(yi) == len(si):
+            raise ValueError("xi, yi, si must all be sepcified and the same length")
+        
+        
+        if all(map(astropy.utils.isiterable, (xi, yi, si))):
+            self._xi.extend(list(xi))
+            self._yi.extend(list(yi))
+            self._si.extend(list(si))
+        else:
+            self._xi.append(xi)
+            self._yi.append(yi)
+            self._si.append(si)
+    
+    def __repr__(self):
+        
+        return "Xi: {}, Yi: {}, Si: {}".format(self.xi.__repr__(), self.yi.__repr__(), self.si.__repr__())
+
+    def __str__(self):
+        
+        return self.__repr__()
+    
+    def __getitem__(self, val):
+        if not isinstance(val, int):
+            raise TypeError("You can only slice FluxTubes with an integer")
+        
+        return self.xi[val], self.yi[val], self.si[val]
+
+    def __len__(self):
+        return len(self._xi)
+        
 
 class BaseModel(dict):
     """
@@ -20,24 +75,24 @@ class BaseModel(dict):
                   'phratio': None,
                   'pixel': None,
                   'radial_scale': None,
-                  'nftubes': None,
                   'B_corona': None,
                   'pBplus': None}
     
-    options_dict = {
-        'l_hdonly': False,  # set mag field zero to check background
-        'l_ambB': False,  # include some ambient magnetic field b_z
-        'l_const': False,  # axial Alfven speed const  Z-depend (Spruit)
-        'l_sqrt': False,  # axial Alfven speed sqrt   Z-depend (Spruit)
-        'l_linear': False,  # axial Alfven speed linear Z-depend (Spruit)
-        'l_square': False,  # axial Alfven speed square Z-depend (Spruit)
-        'l_B0_expz': False,  # Z-depend of Bz(r=0) exponentials
-        'l_B0_quadz': False,  # Z-depend of Bz(r=0) polynomials + exponential 
-        'l_single': False,  # only one flux tube
-        'l_atmos_val3c_mtw': False,  # interpolate composite VAL3c+MTW atmosphere
-        'suffix': '.gdf'
-    }
-    
+    options_dict = {'l_hdonly': False,  # set mag field zero to check background
+                    'l_ambB': False,  # include some ambient magnetic field b_z
+                    'l_const': False,  # axial Alfven speed const  Z-depend (Spruit)
+                    'l_sqrt': False,  # axial Alfven speed sqrt   Z-depend (Spruit)
+                    'l_linear': False,  # axial Alfven speed linear Z-depend (Spruit)
+                    'l_square': False,  # axial Alfven speed square Z-depend (Spruit)
+                    'l_B0_expz': False,  # Z-depend of Bz(r=0) exponentials
+                    'l_B0_quadz': False,  # Z-depend of Bz(r=0) polynomials + exponential 
+                    'l_single': False,  # only one flux tube
+                    'l_atmos_val3c_mtw': False,  # interpolate composite VAL3c+MTW atmosphere
+                    'suffix': '.gdf'
+                    }
+
+    flux_tubes = FluxTubes()
+
     def __init__(self, *args, **kwargs):
         
         super(dict, self).__init__(self, *args, **kwargs)
@@ -45,6 +100,10 @@ class BaseModel(dict):
         self.update(self.options_dict)
         
         self.__dict__ = self
+        
+        self._x_grid = None
+        self._y_grid = None
+        self._z_grid = None
     
     def __getitem__(self, value):
         """
@@ -57,6 +116,20 @@ class BaseModel(dict):
     
     def __str__(self):
         return self.__class__.__name__
+
+
+    def _get_grid(self):
+        if self._x_grid:
+            pass
+        else:
+            cunit = self['zmax'].unit
+            x, y, z = np.mgrid[self['xmin'].to(cunit):self['xmax'].to(cunit):1j*self['domain_dimensions'][0],
+                               self['ymin'].to(cunit):self['ymax'].to(cunit):1j*self['domain_dimensions'][1],
+                               self['zmin'].to(cunit):self['zmax'].to(cunit):1j*self['domain_dimensions'][2]]
+            
+            self._x_grid = u.Quantity(x, unit=cunit)
+            self._y_grid = u.Quantity(y, unit=cunit)
+            self._z_grid = u.Quantity(z, unit=cunit)
 
     @property
     def xmin(self):
@@ -102,6 +175,21 @@ class BaseModel(dict):
     @property
     def dz(self):
         return (self.domain_right_edge[2]-self.domain_left_edge[2])/(self.domain_dimensions[2]-1)
+
+    @property
+    def x(self):
+        self._get_grid()
+        return self._x_grid   
+        
+    @property
+    def y(self):
+        self._get_grid()
+        return self._y_grid  
+        
+    @property
+    def z(self):
+        self._get_grid()
+        return self._z_grid
     
     @property
     def l_mpi(self):
@@ -132,7 +220,6 @@ class HMIModel(BaseModel):
                  'phratio': 0.15*u.one,
                  'pixel': 0.36562475*u.Mm,      #(HMI pixel)
                  'radial_scale': 0.044*u.Mm,
-                 'nftubes': 1,
                  'B_corona': 0.*u.T,
                  'pBplus': 4.250e-4*u.T,
                  'l_B0_quadz': True,
@@ -151,7 +238,6 @@ class MFEModel(BaseModel):
                  'phratio': 0.0*u.one,
                  'pixel': 0.36562475*u.Mm,  #(HMI pixel)
                  'radial_scale': 0.044*u.Mm,
-                 'nftubes': 1,
                  'B_corona': 0.*u.T,
                  'pBplus': 4.250e-4*u.T,
                  'domain_dimensions':[128,128,128],
@@ -162,6 +248,8 @@ class MFEModel(BaseModel):
                  'l_B0_quadz': True,
                  'l_atmos_val3c_mtw': True}
     model_dict['chratio'] = 1*u.one - model_dict['coratio'] - model_dict['phratio']
+    
+    flux_tubes = FluxTubes(0.*u.Mm,  0.*u.Mm,  100*u.mT)
 
 spruit = {'photo_scale': 1.5*u.Mm,
           'chrom_scale': 1.5*u.Mm,
